@@ -6,8 +6,6 @@ import boto3
 import botocore
 
 import smtplib
-import sys
-import json
 
 import time
 
@@ -15,6 +13,10 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from lxml import etree
 import math
+import logging
+from logging.config import fileConfig
+
+
 
 bucket=os.getenv('S3_BUCKET_NAME', default='')
 data_folder=os.getenv('DATA_FOLDER', default='')
@@ -34,6 +36,8 @@ k_value_upperbound=float(os.getenv('K_VALUE_UPPERBOUND', default=80))
 k_value_lowerbound=float(os.getenv('K_VALUE_LOWERBOUND', default=20))
 yahoo_finance_ul=os.getenv('YAHOO_FINANCE_URL', default='https://finance.yahoo.com/quote/ETH-USD/history?period1={}&period2={}&interval=1d&filter=history&frequency=1d&includeAdjustedClose=true')
 
+fileConfig('logging_config.ini')
+logger = logging.getLogger(__name__)
 def caculate_rsv_k(arr):
     matrix_width = 6;
     matrix_height=len(arr)-1 # we have title, so the number of records will be length -1
@@ -243,24 +247,25 @@ def get_statistics():
     return result
 
 def lambda_handler(event, context):
+    
     # step 1: get the latest ethereum info
-    print('Step 1: download ethereum info from Yahoo Finance')
+    logger.info('Step 1: download ethereum info from Yahoo Finance')
     today_update=get_statistics()
-    print(today_update)
-    print('')
+    logger.info(today_update)
+    logger.info('')
 
     # step 2: update data and save in s3
-    print('Step 2: update data and save in s3')
+    logger.info('Step 2: update data and save in s3')
     result_k_value=update_stock_info_in_s3(today_update)
 
-    print('the latest K value(K value/Date):')
+    logger.info('the latest K value(K value/Date):')
     print(result_k_value)
-    print('')
+    logger.info('')
     
     # step 3:
     # email out if 1) K value <=20
     #              2) K value >=80
-    print('Step 3: generate the report and email')
+    logger.info('Step 3: generate the report and email')
     k_value=float(result_k_value.split(',')[0])
     data_update_time=result_k_value.split(',')[1]
     url_str=data_end_point+'/'+statistic_file+'\n'
