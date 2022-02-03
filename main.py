@@ -47,7 +47,7 @@ def caculate_rsv_k(arr):
     indx=0
     idx=0
     for d in arr:
-       # print(d)
+       # logger.info(d)
         if idx>0:
             tmp_str_arr=d.split(",")
             matrix[indx][0]=float(tmp_str_arr[4]) # close
@@ -62,7 +62,7 @@ def caculate_rsv_k(arr):
                 matrix[indx][5]=float(tmp_str_arr[6])
             else:
                 matrix[indx][5]=0.0 # daily K value
-           # print(d+","+str(matrix[indx][4]))
+           # logger.info(d+","+str(matrix[indx][4]))
             indx=indx+1
             
         idx=1
@@ -85,8 +85,8 @@ def caculate_rsv_k(arr):
                     min_value=matrix[idx-sidx][2]
            
             matrix[idx][4]=(matrix[idx][0]-min_value)/(max_value-min_value)
-            #print("Hey:")
-            #print(matrix[idx][4])
+            #logger.info("Hey:")
+            #logger.info(matrix[idx][4])
             
     for idx in range(matrix_height):
         if idx > 0 and matrix[idx][5]==0.0:
@@ -100,11 +100,11 @@ def caculate_rsv_k(arr):
     result=[]
     idx=0
     for d in arr:
-        #print(d)
+        #logger.info(d)
         tmp_arr=d.split(",")
         if idx > 0:
             result.append(tmp_arr[0]+','+tmp_arr[1]+','+tmp_arr[2]+','+tmp_arr[3]+','+tmp_arr[4]+','+str(round(matrix[(idx-1)][4],3))+','+str(round(matrix[(idx-1)][5],3)))
-            #print(d+','+str(round(matrix[(idx-1)][4],3))+','+str(round(matrix[(idx-1)][5],3)))
+            #logger.info(d+','+str(round(matrix[(idx-1)][4],3))+','+str(round(matrix[(idx-1)][5],3)))
         else:
             result.append(d)
         
@@ -127,7 +127,7 @@ def update_stock_info_in_s3(input_data):
             yyyy_mm_dd_timestamp_set.add(l.split(',')[0].strip())
         single_stock_symbol_file.close()
         
-        #print(input_data)
+        #logger.info(input_data)
         if input_data != None and len(input_data) > 0:
             for d in input_data:
 
@@ -135,16 +135,16 @@ def update_stock_info_in_s3(input_data):
             
                 if yyyy_mm_dd_timestamp not in yyyy_mm_dd_timestamp_set:
                     tmp_arr.append(yyyy_mm_dd_timestamp+","+d[1].replace(',','')+","+d[2].replace(',','')+","+d[3].replace(',','')+","+d[4].replace(',',''))
-        #print(tmp_arr)        
+        #logger.info(tmp_arr)        
         tmp_arr_rsv_k=caculate_rsv_k(tmp_arr)
-        #print(tmp_arr_rsv_k)
+        #logger.info(tmp_arr_rsv_k)
         # prepate output data 
         last_k_value_and_date=None
         output_data= ''
         for d in tmp_arr_rsv_k:
             output_data=output_data+d+'\n'
         last_k_value_and_date=tmp_arr_rsv_k[len(tmp_arr_rsv_k)-1].split(',')[6]+','+tmp_arr_rsv_k[len(tmp_arr_rsv_k)-1].split(',')[0]
-        #print(last_k_value_and_date)
+        #logger.info(last_k_value_and_date)
         s3client=boto3.client('s3')
         # remove file on s3 
         response=s3client.delete_object(Bucket=bucket, Key=data_folder+'/'+statistic_file)
@@ -156,7 +156,7 @@ def update_stock_info_in_s3(input_data):
         return last_k_value_and_date
     except botocore.exceptions.ClientError as e:
         if e.response['Error']['Code'] == "404":
-            print("The object ("+data_folder+'/'+statistic_file+") does not exist.")
+            logger.error("The object ("+data_folder+'/'+statistic_file+") does not exist.")
             return None
         else:
             raise
@@ -212,7 +212,7 @@ def get_statistics():
     current_unixtimestamp=math.floor(current_unixtimestamp)
     start_unixtimestamp=current_unixtimestamp - 86400 *upperbound
     source_url=yahoo_finance_ul.format(start_unixtimestamp, current_unixtimestamp)
-    print('Download ethereum statistics from: {}'.format(source_url))
+    logger.info('Download ethereum statistics from: {}'.format(source_url))
     user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/97.0.4692.99 Safari/537.36'
     headers={'User-Agent': user_agent}
     req=urllib.request.Request(source_url, headers=headers)
@@ -259,7 +259,7 @@ def lambda_handler(event, context):
     result_k_value=update_stock_info_in_s3(today_update)
 
     logger.info('the latest K value(K value/Date):')
-    print(result_k_value)
+    logger.info(result_k_value)
     logger.info('')
     
     # step 3:
@@ -281,7 +281,7 @@ def lambda_handler(event, context):
         action_str=action_str+"    建議賣掉 Ethereum (K 值={})\n".format(k_value)
     
     action_str=action_str+'\n\n'+'詳細 K 值資訊 (Ethereum): \n'+url_str
-    print("email content: \n{}".format(action_str))
+    logger.info("email content: \n{}".format(action_str))
     
     if k_value <= k_value_lowerbound or k_value >= k_value_upperbound:
         notify_by_mail("[注意!!][K值分析] "+report_date_update_time+" Ethereum K 值="+str(k_value), action_str,1)
