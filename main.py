@@ -17,9 +17,9 @@ from lxml import etree
 import math
 
 bucket=os.getenv('S3_BUCKET_NAME', default='')
-data_folder=os.getenv('DATA_FOLDER', default=None)
-sender=os.getenv('SENDER', default=None)
-recipients=os.getenv('MAIL_RECIPIENTS', default=None)
+data_folder=os.getenv('DATA_FOLDER', default='')
+sender=os.getenv('SENDER', default='')
+recipients=os.getenv('MAIL_RECIPIENTS', default='')
 data_end_point=os.getenv('DEFAULT_DATA_PAGE_END_POINT', default="https://s3-ap-northeast-1.amazonaws.com/")
 
 # SMTP Config
@@ -30,17 +30,16 @@ EMAIL_PORT = int(os.getenv('EMAIL_PORT', default=587))
 
 statistic_file=os.getenv('STATISTICS_FILE', default='statistics.csv')
 stock_info_title="date,open,high,low,close,RSV,K"
-k_value_upperbound=float(os.getenv('K_VALUE_UPPERBOUND', default=0))
-k_value_lowerbound=float(os.getenv('K_VALUE_LOWERBOUND', default=100))
-yahoo_finance_ul=os.getenv('STATISTICS_FILE', default='https://finance.yahoo.com/quote/ETH-USD/history?period1={}&period2={}&interval=1d&filter=history&frequency=1d&includeAdjustedClose=true')
+k_value_upperbound=float(os.getenv('K_VALUE_UPPERBOUND', default=80))
+k_value_lowerbound=float(os.getenv('K_VALUE_LOWERBOUND', default=20))
+yahoo_finance_ul=os.getenv('YAHOO_FINANCE_URL', default='https://finance.yahoo.com/quote/ETH-USD/history?period1={}&period2={}&interval=1d&filter=history&frequency=1d&includeAdjustedClose=true')
 
 def caculate_rsv_k(arr):
     matrix_width = 6;
     matrix_height=len(arr)-1 # we have title, so the number of records will be length -1
     matrix= [[0 for x in range(matrix_width)] for y in range(matrix_height)]
     #source(tmp_arr): date,open,high,low,close,RSV,K
-    #matrix: close,high,low,open,RSV,k
-    #         0     1    2    3   4  5
+    #                   0   1    2    3    4    5  6
     indx=0
     idx=0
     for d in arr:
@@ -51,11 +50,11 @@ def caculate_rsv_k(arr):
             matrix[indx][1]=float(tmp_str_arr[2]) # high
             matrix[indx][2]=float(tmp_str_arr[3]) # low
             matrix[indx][3]=float(tmp_str_arr[1]) # open
-            if len(tmp_str_arr)>=6: # rsv
+            if len(tmp_str_arr)>=6: # rsv exists
                 matrix[indx][4]=float(tmp_str_arr[5])
             else:
                 matrix[indx][4]=0.0
-            if len(tmp_str_arr)>=7 : #daily K value
+            if len(tmp_str_arr)>=7 : #daily K value exists
                 matrix[indx][5]=float(tmp_str_arr[6])
             else:
                 matrix[indx][5]=0.0 # daily K value
@@ -127,6 +126,7 @@ def update_stock_info_in_s3(input_data):
         #print(input_data)
         if input_data != None and len(input_data) > 0:
             for d in input_data:
+
                 yyyy_mm_dd_timestamp=(d[0])
             
                 if yyyy_mm_dd_timestamp not in yyyy_mm_dd_timestamp_set:
@@ -201,7 +201,7 @@ def getValurFromXpath(html, xpath):
         return v[0]
 
 def get_statistics():
-    result=''
+    result=[]
     tr_index=1 
     upperbound=7 # I don't know how to know when we get the last </tr> in <tbody>
     current_unixtimestamp=time.time()
@@ -231,8 +231,15 @@ def get_statistics():
             volume=getValurFromXpath(html, 
                 '/html/body/div[1]/div/div/div[1]/div/div[3]/div[1]/div/div[2]/div/div/section/div[2]/table/tbody/tr[{}]/td[{}]/span/text()'.format(tr_index, 7))
             if open_value != '':
-                result=result+standardize_date(current_date)+','+str(open_value).replace(',','') +','+str(high_value).replace(',','')+','+ str(low_value).replace(',','')+','+ str(close_value).replace(',','')+ ','+str(adj_close).replace(',','')+','+str(volume).replace(',','')+"\n"
+                e=[]
+                e.append(standardize_date(current_date))
+                e.append(open_value)
+                e.append(high_value)
+                e.append(low_value)
+                e.append(close_value)
+                result.append(e)
             tr_index=tr_index+1
+    result.sort()
     return result
 
 def lambda_handler(event, context):
@@ -240,43 +247,41 @@ def lambda_handler(event, context):
     print('Step 1: download ethereum info from Yahoo Finance')
     today_update=get_statistics()
     print(today_update)
+    print('')
+
     # step 2: update data and save in s3
     print('Step 2: update data and save in s3')
-    #result_k_vale=update_stock_info_in_s3(today_update)
+    result_k_value=update_stock_info_in_s3(today_update)
 
-   # print('the latest K value(K value/Date):')
-   # print(result_k_vale)
-   # print('\n')
+    print('the latest K value(K value/Date):')
+    print(result_k_value)
+    print('')
     
     # step 3:
     # email out if 1) K value <=20
     #              2) K value >=80
     print('Step 3: generate the report and email')
-   # data_update_time=None
-#    url_str=''
- 
- #   k_value=float(result_k_vale.split(',')[0])
- #   data_update_time=result_k_vale.split(',')[1]
- #   url_str=url_str+data_end_point+'/'+statistic_file+'\n'
+    k_value=float(result_k_value.split(',')[0])
+    data_update_time=result_k_value.split(',')[1]
+    url_str=data_end_point+'/'+statistic_file+'\n'
  #   
-  #  report_date_update_time=data_update_time[:4]+'/'+data_update_time[4:6]+'/'+data_update_time[6:8]
-  #  action_str='今天 Ethereum K 值分析 ('+report_date_update_time+'): \n'
+    report_date_update_time=data_update_time.replace('-','/')
+    action_str='今天 Ethereum K 值分析 ('+report_date_update_time+'): \n'
 
-   # if k_value > k_value_lowerbound and k_value <k_value_lowerbound:
-#        action_str=action_str+"    不用買或賣 Ethereum (K 值={})\n".format(k_value)
-#    if k_value <= k_value_lowerbound:
-#        action_str=action_str+"    建議購買 Ethereum (K 值={})\n".format(k_value)
-#    if k_value >= k_value_upperbound:
-#        action_str=action_str+"    建議賣掉 Ethereum (K 值={})\n".format(k_value)
+    if k_value > k_value_lowerbound and k_value < k_value_upperbound:
+        action_str=action_str+"    不用買或賣 Ethereum (K 值={})\n".format(k_value)
+    if k_value <= k_value_lowerbound:
+        action_str=action_str+"    建議購買 Ethereum (K 值={})\n".format(k_value)
+    if k_value >= k_value_upperbound:
+        action_str=action_str+"    建議賣掉 Ethereum (K 值={})\n".format(k_value)
     
-#    action_str=action_str+'\n\n'+'詳細 K 值資訊 (Ethereum): \n'+url_str
-#    print("email content: \n{}".format(action_str))
+    action_str=action_str+'\n\n'+'詳細 K 值資訊 (Ethereum): \n'+url_str
+    print("email content: \n{}".format(action_str))
     
-#    if k_value <= k_value_lowerbound or k_value >= k_value_upperbound:
-#        notify_by_mail("[注意!!][Ethereum K值分析] "+report_date_update_time+" Ethereum K 值="+str(k_value), action_str,1)
-#    else:
-#        notify_by_mail("[Ethereum K值分析] "+report_date_update_time+" Ethereum K 值="+str(k_value),action_str)
-
+    if k_value <= k_value_lowerbound or k_value >= k_value_upperbound:
+        notify_by_mail("[注意!!][K值分析] "+report_date_update_time+" Ethereum K 值="+str(k_value), action_str,1)
+    else:
+        notify_by_mail("[K值分析] "+report_date_update_time+" Ethereum K 值="+str(k_value),action_str)
  
 if __name__ == "__main__":
     lambda_handler(None, None)
