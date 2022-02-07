@@ -16,7 +16,8 @@ import math
 import logging
 from logging.config import fileConfig
 
-
+region = os.getenv('AWS_REGION', default='ap-northeast-1')
+ec2_instances = os.getenv('INSTANCE_LIST', default='i-02fa04584694d51b9')
 
 bucket=os.getenv('S3_BUCKET_NAME', default='')
 data_folder=os.getenv('DATA_FOLDER', default='')
